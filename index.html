@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>사진편집기</title>
+  <link rel="icon" href="assets/kmou-logo.png">
+  <link rel="stylesheet" href="style.css">
+  <script src="vendor/pako.min.js" defer></script>
+  <script src="vendor/utif.js" defer></script>
+  <script src="vendor/jszip.min.js" defer></script>
+  <script src="vendor/qrcode.min.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header class="site-header">
+    <a class="logo-link" href="https://kmou.ac.kr" target="_blank" rel="noopener noreferrer" title="국립한국해양대학교 홈페이지로 이동">
+      <img src="assets/kmou-logo.png" alt="국립한국해양대학교" width="272" height="54">
+    </a>
+    <h1 class="site-name">사진편집기</h1>
+  </header>
+
+  <main class="wrap">
+    <section class="drop-card" id="dropzone" aria-labelledby="drop-heading">
+      <div class="drop-icon" aria-hidden="true">
+        <svg viewBox="0 0 48 48"><path fill="currentColor" d="M24 8l9 9h-6v12h-6V17h-6l9-9z"/><path fill="currentColor" d="M10 30h6v6h16v-6h6v12H10V30z"/></svg>
+      </div>
+      <h2 id="drop-heading">사진을 여기에 놓거나 불러오세요</h2>
+      <p class="drop-hint">여러 장을 한 번에 선택할 수 있습니다. 편집은 이 브라우저에서 이뤄지고, AI 여백과 QR 받기는 인터넷이 필요합니다.</p>
+      <button type="button" class="primary" id="pick-button">사진 선택</button>
+      <input id="file-input" class="visually-hidden" type="file" multiple aria-hidden="true" tabindex="-1" accept="image/*,.jpg,.jpeg,.jpe,.jfif,.pjpeg,.pjp,.png,.apng,.gif,.webp,.bmp,.dib,.ico,.cur,.svg,.svgz,.avif,.tif,.tiff,.heic,.heif">
+      <p id="toast" class="toast" role="status" hidden></p>
+    </section>
+
+    <section class="studio" id="studio" hidden>
+      <div class="stage-card">
+        <p class="stage-kicker" id="stage-title">사진을 고르면 여기서 다듬습니다</p>
+        <div class="stage" id="stage">
+          <div class="stage-board" id="stage-board">
+            <canvas id="stage-canvas"></canvas>
+            <div class="crop-veil" id="crop-veil" hidden>
+              <i class="crop-dim" id="dim-t"></i>
+              <i class="crop-dim" id="dim-b"></i>
+              <i class="crop-dim" id="dim-l"></i>
+              <i class="crop-dim" id="dim-r"></i>
+              <div class="crop-box" id="crop-box" role="slider" aria-label="자를 영역" tabindex="0">
+                <span class="crop-grid" aria-hidden="true"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="crop-tools" id="crop-tools" hidden>
+          <label class="zoom-field">확대
+            <input id="crop-zoom" type="range" min="1" max="4" step="0.01" value="1">
+            <output id="crop-zoom-out">1.0×</output>
+          </label>
+          <p class="crop-help">프레임을 끌어 남길 부분을 고르세요.</p>
+        </div>
+      </div>
+
+      <aside class="panel" aria-label="편집 도구">
+        <section class="panel-block">
+          <h2>비율</h2>
+          <div class="chip-row" role="group" aria-label="기본 비율">
+            <button type="button" class="ratio is-selected" data-w="1" data-h="1" aria-pressed="true"><i style="--ratio:1/1"></i>1:1</button>
+            <button type="button" class="ratio" data-w="3" data-h="4" aria-pressed="false"><i style="--ratio:3/4"></i>3:4</button>
+            <button type="button" class="ratio" data-w="4" data-h="3" aria-pressed="false"><i style="--ratio:4/3"></i>4:3</button>
+            <button type="button" class="ratio" data-w="9" data-h="16" aria-pressed="false"><i style="--ratio:9/16"></i>9:16</button>
+            <button type="button" class="ratio" data-w="16" data-h="9" aria-pressed="false"><i style="--ratio:16/9"></i>16:9</button>
+            <button type="button" class="ratio" data-custom="true" aria-pressed="false"><i style="--ratio:3/2"></i>직접</button>
+          </div>
+          <div class="chip-row insta-row" role="group" aria-label="인스타그램 비율">
+            <button type="button" class="ratio insta" data-w="9" data-h="16" data-label="story" aria-pressed="false"><i style="--ratio:9/16"></i>스토리</button>
+            <button type="button" class="ratio insta" data-w="1" data-h="1" data-label="feed" aria-pressed="false"><i style="--ratio:1/1"></i>피드 정사각</button>
+            <button type="button" class="ratio insta" data-w="4" data-h="5" data-label="feed45" aria-pressed="false"><i style="--ratio:4/5"></i>피드 세로</button>
+            <button type="button" class="ratio insta" data-w="1.91" data-h="1" data-label="feed191" aria-pressed="false"><i style="--ratio:1.91/1"></i>피드 가로</button>
+          </div>
+          <div class="custom-ratio">
+            <label>가로 <input id="ratio-w" type="number" min="0.01" step="any" inputmode="decimal" value="3"></label>
+            <span aria-hidden="true">:</span>
+            <label>세로 <input id="ratio-h" type="number" min="0.01" step="any" inputmode="decimal" value="2"></label>
+          </div>
+        </section>
+
+        <section class="panel-block">
+          <h2>맞추는 방법</h2>
+          <div class="seg" role="group" aria-label="맞추는 방법">
+            <button type="button" class="mode is-selected" data-mode="pad" aria-pressed="true">여백</button>
+            <button type="button" class="mode" data-mode="crop" aria-pressed="false">자르기</button>
+          </div>
+          <div id="pad-options">
+            <div class="seg seg-wrap" role="group" aria-label="여백 채우기">
+              <button type="button" class="pad-fill is-selected" data-fill="color" aria-pressed="true">색으로 채우기</button>
+              <button type="button" class="pad-fill" data-fill="extend" aria-pressed="false">사진 이어 채우기</button>
+              <button type="button" class="pad-fill" data-fill="ai" aria-pressed="false">AI로 채우기</button>
+            </div>
+            <label class="color-field" id="color-field">여백 색
+              <input id="pad-color" type="color" value="#f2f2f7">
+            </label>
+            <p class="help" id="extend-help" hidden>올린 사진의 색과 분위기를 이어 빈 칸을 채웁니다.</p>
+            <p class="help" id="ai-help" hidden>사진 가장자리의 배경·옷·장면을 읽어 빈 칸을 이어 채웁니다. 증명사진은 스튜디오 배경을 유지하고, 아래가 비면 어깨를 이어 그립니다.</p>
+          </div>
+        </section>
+
+        <section class="panel-block">
+          <h2>용량</h2>
+          <label class="slider">해상도
+            <input id="scale" type="range" min="20" max="100" step="1" value="100">
+            <input id="scale-num" class="adj-num" type="number" min="20" max="100" step="1" value="100">
+          </label>
+          <label class="slider">화질
+            <input id="quality" type="range" min="20" max="100" step="1" value="92">
+            <input id="quality-num" class="adj-num" type="number" min="20" max="100" step="1" value="92">
+          </label>
+          <label class="check-field">
+            <input id="compact-jpeg" type="checkbox">
+            JPEG로 저장해 용량 더 줄이기
+          </label>
+          <p class="help" id="size-hint">해상도와 화질을 낮추면 파일 크기가 작아집니다.</p>
+        </section>
+
+        <section class="panel-block">
+          <h2>방향</h2>
+          <div class="tool-row">
+            <button type="button" id="flip-btn">좌우 반전</button>
+            <button type="button" id="rot-left">왼쪽 90°</button>
+            <button type="button" id="rot-right">오른쪽 90°</button>
+          </div>
+          <label class="slider">각도
+            <input id="angle" type="range" min="-180" max="180" step="1" value="0">
+            <input id="angle-num" class="adj-num" type="number" min="-180" max="180" step="1" value="0">
+          </label>
+        </section>
+
+        <section class="panel-block">
+          <h2>필터</h2>
+          <div class="filter-row" role="group" aria-label="필터">
+            <button type="button" class="filter is-selected" data-filter="none" aria-pressed="true"><span class="swatch swatch-none"></span>원본</button>
+            <button type="button" class="filter" data-filter="bw" aria-pressed="false"><span class="swatch swatch-bw"></span>흑백</button>
+            <button type="button" class="filter" data-filter="noir" aria-pressed="false"><span class="swatch swatch-noir"></span>느와르</button>
+            <button type="button" class="filter" data-filter="mono" aria-pressed="false"><span class="swatch swatch-mono"></span>모노</button>
+            <button type="button" class="filter" data-filter="silver" aria-pressed="false"><span class="swatch swatch-silver"></span>실버톤</button>
+            <button type="button" class="filter" data-filter="warm" aria-pressed="false"><span class="swatch swatch-warm"></span>따뜻한 톤</button>
+            <button type="button" class="filter" data-filter="cool" aria-pressed="false"><span class="swatch swatch-cool"></span>차가운 톤</button>
+          </div>
+        </section>
+
+        <section class="panel-block">
+          <div class="panel-head">
+            <h2>색감</h2>
+            <button type="button" class="text-btn" id="reset-adj">초기화</button>
+          </div>
+          <div class="sliders" id="adj-sliders"></div>
+          <button type="button" class="ghost" id="apply-all">이 색감을 모든 사진에 적용</button>
+        </section>
+      </aside>
+    </section>
+
+    <section class="format-card" aria-labelledby="format-heading">
+      <h2 id="format-heading">크기 조정 가능한 형식</h2>
+      <ul class="format-list">
+        <li><b>JPG</b></li><li><b>PNG</b></li><li><b>GIF</b></li><li><b>WEBP</b></li><li><b>BMP</b></li>
+        <li><b>TIFF</b></li><li><b>SVG</b></li><li><b>ICO</b></li><li><b>AVIF</b></li><li><b>HEIC</b></li>
+      </ul>
+      <p class="format-note">JPG, PNG, WEBP, BMP, TIFF는 같은 형식으로 저장합니다. GIF와 SVG는 PNG, HEIC와 HEIF는 JPG로 저장합니다.</p>
+    </section>
+
+    <section id="files" class="files" hidden>
+      <div class="files-head">
+        <h2>올린 사진</h2>
+        <p id="file-count"></p>
+      </div>
+      <ul id="file-list" class="file-list"></ul>
+      <div class="batch-bar">
+        <p id="batch-hint">모든 사진의 작업이 끝나면 한꺼번에 받을 수 있습니다.</p>
+        <button type="button" id="batch-download" class="primary" disabled>일괄 다운로드</button>
+      </div>
+    </section>
+
+    <section class="history-card" id="history-section">
+      <div class="files-head">
+        <h2>수정 기록</h2>
+        <button type="button" class="text-btn" id="history-clear">모두 지우기</button>
+      </div>
+      <p class="help" id="history-empty">아직 저장된 기록이 없습니다. 사진을 편집하면 여기에 남습니다.</p>
+      <ul id="history-list" class="history-list"></ul>
+    </section>
+  </main>
+
+  <div class="sheet" id="share-sheet" hidden>
+    <div class="sheet-card" role="dialog" aria-labelledby="share-title">
+      <h2 id="share-title">사진 보내기</h2>
+      <p id="share-name"></p>
+      <div class="share-actions">
+        <button type="button" data-send="kakao">카카오톡</button>
+        <button type="button" data-send="mail">이메일</button>
+        <button type="button" data-send="sms">문자</button>
+        <button type="button" data-send="qr">QR 코드</button>
+      </div>
+      <div id="qr-panel" hidden>
+        <p id="qr-status">받는 링크를 만드는 중입니다.</p>
+        <div id="qr-target"></div>
+        <a id="qr-link" href="#" target="_blank" rel="noopener noreferrer"></a>
+        <button type="button" class="ghost" id="qr-copy">링크 복사</button>
+      </div>
+      <button type="button" class="text-btn" id="share-close">닫기</button>
+    </div>
+  </div>
+</body>
+</html>
